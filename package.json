@@ -5,9 +5,8 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "scripts": {
-    "test": "node test/test.js",
+    "start": "node src/index.js",
     "lint": "eslint src/ test/",
-    "format": "prettier --write src/ test/",
     "prepare": "npm run build",
     "build": "tsc --build || echo 'TypeScript not configured'"
   },
@@ -47,14 +46,15 @@
     "registry": "https://registry.npmjs.org"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.70",
+    "axios": "^1.6.2",
     "canvas": "^2.11.2",
-    "sharp": "^0.32.1",
-    "axios": "^1.6.2"
+    "sharp": "^0.32.1"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "eslint": "^8.56.0",
     "prettier": "^3.2.4",
-    "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
