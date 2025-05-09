@@ -1,8 +1,0 @@
-modules = ["nodejs-16"]
-run = "npm start"
-
-[nix]
-channel = "stable-24_05"
-
-[deployment]
-run = ["sh", "-c", "npm start"]
