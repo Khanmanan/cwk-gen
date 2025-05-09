@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "description": "High-quality image generator for Discord bots with welcome images, rank cards, profile cards, and server banners",
   "main": "src/index.js",
+  "types": "src/index.d.ts",
   "scripts": {
     "test": "node test/test.js",
     "lint": "eslint src/ test/",
-    "format": "prettier --write src/ test/"
+    "format": "prettier --write src/ test/",
+    "prepare": "npm run build",
+    "build": "tsc --build || echo 'TypeScript not configured'"
   },
   "repository": {
     "type": "git",
@@ -20,7 +23,11 @@
     "welcome",
     "rank",
     "profile",
-    "banner"
+    "banner",
+    "discord.js",
+    "card",
+    "xp",
+    "level"
   ],
   "author": "Khanmanan",
   "license": "MIT",
@@ -28,6 +35,17 @@
     "url": "https://github.com/Khanmanan/cwk-gen/issues"
   },
   "homepage": "https://github.com/Khanmanan/cwk-gen#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "dependencies": {
     "canvas": "^2.11.2",
     "sharp": "^0.32.1",
@@ -35,6 +53,12 @@
   },
   "devDependencies": {
     "eslint": "^8.56.0",
-    "prettier": "^3.2.4"
+    "prettier": "^3.2.4",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "canvas": "^2.11.2",
+    "sharp": "^0.32.1"
   }
 }
