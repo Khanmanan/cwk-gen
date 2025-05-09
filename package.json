@@ -1,0 +1,40 @@
+{
+  "name": "cwk-gen",
+  "version": "1.0.0",
+  "description": "High-quality image generator for Discord bots with welcome images, rank cards, profile cards, and server banners",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node test/test.js",
+    "lint": "eslint src/ test/",
+    "format": "prettier --write src/ test/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Khanmanan/cwk-gen.git"
+  },
+  "keywords": [
+    "discord",
+    "image",
+    "generator",
+    "canvas",
+    "welcome",
+    "rank",
+    "profile",
+    "banner"
+  ],
+  "author": "Khanmanan",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Khanmanan/cwk-gen/issues"
+  },
+  "homepage": "https://github.com/Khanmanan/cwk-gen#readme",
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "sharp": "^0.32.1",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4"
+  }
+}
