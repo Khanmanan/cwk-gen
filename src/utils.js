@@ -1,4 +1,4 @@
-const { createCanvas, loadImage, registerFont } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
 const sharp = require('sharp');
 const axios = require('axios');
 
