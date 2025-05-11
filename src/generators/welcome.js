@@ -84,7 +84,7 @@ async function generateWelcomeImage(options) {
     }
 
     // Draw title
-    ctx.font = `bold 40px ${font}`;
+    ctx.font = `bold 30px ${font}`;
     ctx.fillStyle = textColor;
     if (shadow) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
@@ -93,17 +93,17 @@ async function generateWelcomeImage(options) {
         ctx.shadowOffsetY = 2;
     }
     const titleWidth = ctx.measureText(title).width;
-    ctx.fillText(title, (width - titleWidth) / 2, 50);
+    ctx.fillText(title, (width - titleWidth) / 2, 60);
 
     // Draw username
-    ctx.font = `bold 30px ${font}`;
+    ctx.font = `bold 25px ${font}`;
     const usernameWidth = ctx.measureText(username).width;
-    ctx.fillText(username, (width - usernameWidth) / 2, height - 60);
+    ctx.fillText(username, (width - usernameWidth) / 2, height - 50);
 
     // Draw message
     ctx.font = `25px ${font}`;
     ctx.shadowColor = 'transparent';
-    const wrappedMessage = wrapText(ctx, message, width - 100);
+    const wrappedMessage = wrapText(ctx, message, width - 105);
     const lines = wrappedMessage.split('\n');
     const lineHeight = 30;
     const messageY = height - 100 - (lines.length - 1) * lineHeight;
