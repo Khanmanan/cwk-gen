@@ -2,7 +2,7 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const GIFEncoder = require('gifencoder');
 const { loadImageBuffer } = require('../utils');
 const fs = require('fs');
-
+const { cropToCircle, wrapText } = require('../utils');
 async function generateAnimatedWelcome(options) {
   const {
     frames = 15,         // Number of animation frames

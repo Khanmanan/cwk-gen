@@ -1,0 +1,167 @@
+name: Advanced Discord GitHub Notification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, closed, synchronize]
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Needed to get full commit history for diff comparison
+
+      - name: Set Variables
+        id: vars
+        run: |
+          # Basic variables
+          echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "COMMIT_URL=https://github.com/${{ github.repository }}/commit/${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "PR_URL=https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "COLOR=5814783" >> $GITHUB_OUTPUT
+          echo "CHANGES_MESSAGE=" >> $GITHUB_OUTPUT
+          
+          # Get commit message
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "COMMIT_MESSAGE=$(echo "$COMMIT_MESSAGE" | sed 's/"/\\"/g')" >> $GITHUB_OUTPUT
+          
+          # PR events
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [[ "${{ github.event.action }}" == "closed" ]]; then
+              if [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
+                echo "DESCRIPTION=<:blurplebook:871768519744815104> **${{ github.actor }}** merged PR #${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+                echo "COLOR=3066993" >> $GITHUB_OUTPUT
+                echo "EMOJI_TITLE=<:github:1217021947934937148> Merge Complete" >> $GITHUB_OUTPUT
+              else
+                echo "DESCRIPTION=❌ **${{ github.actor }}** closed PR #${{ github.event.pull_request.number }} without merging" >> $GITHUB_OUTPUT
+                echo "COLOR=15158332" >> $GITHUB_OUTPUT
+                echo "EMOJI_TITLE=<:blurplebook:871768519744815104> PR Closed" >> $GITHUB_OUTPUT
+              fi
+            elif [[ "${{ github.event.action }}" == "opened" || "${{ github.event.action }}" == "reopened" ]]; then
+              echo "DESCRIPTION=<:blurplebook:871768519744815104> **${{ github.actor }}** opened PR #${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+              echo "EMOJI_TITLE=<:blurplebook:871768519744815104> New PR" >> $GITHUB_OUTPUT
+            elif [[ "${{ github.event.action }}" == "synchronize" ]]; then
+              echo "DESCRIPTION=<:blurplebook:871768519744815104> **${{ github.actor }}** updated PR #${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+              echo "EMOJI_TITLE=<:blurplebook:871768519744815104> PR Updated" >> $GITHUB_OUTPUT
+            fi
+            
+            # Get PR changes
+            echo "CHANGES_MESSAGE+=**PR Changes:**\n" >> $GITHUB_OUTPUT
+            echo "CHANGES_MESSAGE+=$(git diff --name-status ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} | awk '{print \"- \" $1 \" \" $2}' | sed 's/\/\/.*//g' | sed 's/"/\\"/g')\n" >> $GITHUB_OUTPUT
+          else
+            # Push events
+            echo "DESCRIPTION=<a:notificationbell:905561114786549760> **${{ github.actor }}** pushed to **main**" >> $GITHUB_OUTPUT
+            echo "EMOJI_TITLE=<:cwkhan:1363563783112360066> Push Notification" >> $GITHUB_OUTPUT
+            
+            # Get commit changes
+            if [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+              echo "CHANGES_MESSAGE+=**Commit Changes:**\n" >> $GITHUB_OUTPUT
+              echo "CHANGES_MESSAGE+=$(git diff --name-status ${{ github.event.before }} ${{ github.sha }} | awk '{print \"- \" $1 \" \" $2}' | sed 's/\/\/.*//g' | sed 's/"/\\"/g')\n" >> $GITHUB_OUTPUT
+              
+              # Get file diffs for modified files
+              MODIFIED_FILES=$(git diff --name-only --diff-filter=M ${{ github.event.before }} ${{ github.sha }})
+              if [[ -n "$MODIFIED_FILES" ]]; then
+                echo "CHANGES_MESSAGE+=\n**File Diffs:**\n" >> $GITHUB_OUTPUT
+                for file in $MODIFIED_FILES; do
+                  DIFF=$(git diff -U5 ${{ github.event.before }} ${{ github.sha }} -- "$file" | sed -e 's/"/\\"/g' -e 's/$/\\n/' | tr -d '\n')
+                  echo "CHANGES_MESSAGE+=\n**$file**\n\`\`\`diff\n$DIFF\n\`\`\`\n" >> $GITHUB_OUTPUT
+                done
+              fi
+              
+              # Get added files content preview
+              ADDED_FILES=$(git diff --name-only --diff-filter=A ${{ github.event.before }} ${{ github.sha }})
+              if [[ -n "$ADDED_FILES" ]]; then
+                echo "CHANGES_MESSAGE+=\n**New Files:**\n" >> $GITHUB_OUTPUT
+                for file in $ADDED_FILES; do
+                  CONTENT=$(git show ${{ github.sha }}:"$file" | head -n 20 | sed -e 's/"/\\"/g' -e 's/$/\\n/' | tr -d '\n')
+                  echo "CHANGES_MESSAGE+=\n**$file**\n\`\`\`\n$CONTENT\n[...]\n\`\`\`\n" >> $GITHUB_OUTPUT
+                done
+              fi
+            fi
+          fi
+
+      - name: Truncate changes if too long
+        id: truncate
+        run: |
+          MAX_LENGTH=1500
+          CHANGES="${{ steps.vars.outputs.CHANGES_MESSAGE }}"
+          
+          if [ ${#CHANGES} -gt $MAX_LENGTH ]; then
+            TRUNCATED="${CHANGES:0:$MAX_LENGTH}..."
+            echo "CHANGES_MESSAGE=$TRUNCATED" >> $GITHUB_OUTPUT
+            echo "HAS_MORE=true" >> $GITHUB_OUTPUT
+          else
+            echo "CHANGES_MESSAGE=$CHANGES" >> $GITHUB_OUTPUT
+            echo "HAS_MORE=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send to Discord
+        run: |
+          EMBED_FIELDS='
+            {
+              "name": "<:github:1217021947934937148> Repository",
+              "value": "[${{ github.repository }}](https://github.com/${{ github.repository }})",
+              "inline": true
+            },
+            {
+              "name": "<:cwkhan:1363563783112360066> Actor",
+              "value": "[${{ github.actor }}](https://github.com/${{ github.actor }})",
+              "inline": true
+            },
+            {
+              "name": "<:Blurple_rocket:850829955356426241> Commit",
+              "value": "[${{ steps.vars.outputs.SHORT_SHA }}](${{ steps.vars.outputs.COMMIT_URL }})",
+              "inline": true
+            }'
+
+          # Add commit message field if not empty
+          if [[ -n "${{ steps.vars.outputs.COMMIT_MESSAGE }}" ]]; then
+            EMBED_FIELDS+=',
+            {
+              "name": "Commit Message",
+              "value": "```\n${{ steps.vars.outputs.COMMIT_MESSAGE }}\n```"
+            }'
+          fi
+
+          # Add changes field if there are changes
+          if [[ -n "${{ steps.vars.outputs.CHANGES_MESSAGE }}" ]]; then
+            EMBED_FIELDS+=',
+            {
+              "name": "Changes",
+              "value": "${{ steps.vars.outputs.CHANGES_MESSAGE }}"
+            }'
+          fi
+
+          # Add "view more" button if changes were truncated
+          if [[ "${{ steps.truncate.outputs.HAS_MORE }}" == "true" ]]; then
+            EMBED_FIELDS+=',
+            {
+              "name": "Note",
+              "value": "Some changes were truncated. [View full diff](${{ steps.vars.outputs.COMMIT_URL }})"
+            }'
+          fi
+
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"username\": \"GitHub Notification System\",
+            \"avatar_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\",
+            \"embeds\": [{
+              \"title\": \"${{ steps.vars.outputs.EMOJI_TITLE }}\",
+              \"description\": \"${{ steps.vars.outputs.DESCRIPTION }}\",
+              \"color\": ${{ steps.vars.outputs.COLOR }},
+              \"fields\": [$EMBED_FIELDS],
+              \"footer\": {
+                \"text\": \"Workflow #${{ github.run_number }} • ${{ github.ref }}\",
+                \"icon_url\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\"
+              },
+              \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"
+            }]
+          }" \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
