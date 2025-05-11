@@ -28,7 +28,7 @@ async function generateWelcomeImage(options) {
         color = "#7289DA",
         textColor = "#FFFFFF",
         width = 800,
-        height = 300,
+        height = 600,
         avatarSize = 150,
         font = "sans-serif",
         shadow = true
