@@ -1,5 +1,5 @@
 const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
-const sharp = require('sharp');
+const Jimp = require('jimp');
 const axios = require('axios');
 
 /**
@@ -14,7 +14,9 @@ async function loadImageBuffer(source) {
             const response = await axios.get(source, { responseType: 'arraybuffer' });
             return Buffer.from(response.data, 'binary');
         }
-        return sharp(source).toBuffer();
+        // Replace sharp with Jimp
+        const image = await Jimp.read(source);
+        return image.getBufferAsync(Jimp.MIME_PNG);
     }
     throw new Error('Invalid image source');
 }
@@ -26,17 +28,23 @@ async function loadImageBuffer(source) {
  * @returns {Promise<Buffer>}
  */
 async function cropToCircle(buffer, size) {
-    const circle = Buffer.from(
-        `<svg><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" /></svg>`
-    );
+    // Create circular mask
+    const mask = new Jimp(size, size, 0x00000000);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const distance = Math.sqrt(Math.pow(x - size/2, 2) + Math.pow(y - size/2, 2));
+            if (distance <= size/2) {
+                mask.setPixelColor(0xFFFFFFFF, x, y);
+            }
+        }
+    }
 
-    return sharp(buffer)
+    // Process image with Jimp
+    const image = await Jimp.read(buffer);
+    return image
         .resize(size, size)
-        .composite([{
-            input: circle,
-            blend: 'dest-in'
-        }])
-        .toBuffer();
+        .mask(mask)
+        .getBufferAsync(Jimp.MIME_PNG);
 }
 
 /**
