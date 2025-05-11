@@ -1,6 +1,6 @@
 {
   "name": "cwk-gen",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "High-quality image generator for Discord bots with welcome images, rank cards, profile cards, and server banners",
   "main": "src/index.js",
   "types": "src/index.d.ts",
