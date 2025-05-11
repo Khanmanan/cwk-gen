@@ -1,99 +1,198 @@
 const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
 const Jimp = require('jimp');
 const axios = require('axios');
+const path = require('path');
+
+// Cache for loaded fonts
+const fontCache = new Map();
 
 /**
- * Load an image from URL or Buffer
+ * Load an image from URL or Buffer with enhanced error handling
  * @param {string|Buffer} source
  * @returns {Promise<Buffer>}
  */
 async function loadImageBuffer(source) {
-    if (Buffer.isBuffer(source)) return source;
-    if (typeof source === 'string') {
-        if (source.startsWith('http')) {
-            const response = await axios.get(source, { responseType: 'arraybuffer' });
-            return Buffer.from(response.data, 'binary');
+    try {
+        if (Buffer.isBuffer(source)) {
+            // Validate buffer contains image data
+            await Jimp.read(source); 
+            return source;
         }
-        // Replace sharp with Jimp
-        const image = await Jimp.read(source);
-        return image.getBufferAsync(Jimp.MIME_PNG);
+
+        if (typeof source === 'string') {
+            if (source.startsWith('http')) {
+                const response = await axios.get(source, { 
+                    responseType: 'arraybuffer',
+                    timeout: 5000
+                });
+                const buffer = Buffer.from(response.data, 'binary');
+                // Validate downloaded image
+                await Jimp.read(buffer);
+                return buffer;
+            }
+
+            // Handle local files
+            if (!fs.existsSync(source)) {
+                throw new Error(`File not found: ${source}`);
+            }
+            const image = await Jimp.read(source);
+            return image.getBufferAsync(Jimp.MIME_PNG);
+        }
+
+        throw new Error('Invalid image source type');
+    } catch (error) {
+        console.error('Image loading failed:', {
+            sourceType: typeof source,
+            source: source instanceof Buffer ? 'Buffer' : source,
+            error: error.message
+        });
+        throw new Error(`Failed to load image: ${error.message}`);
     }
-    throw new Error('Invalid image source');
 }
 
 /**
- * Crop image to a circle
+ * Optimized circle cropping with cache and better masking
  * @param {Buffer} buffer
  * @param {number} size
  * @returns {Promise<Buffer>}
  */
 async function cropToCircle(buffer, size) {
-    // Create circular mask
-    const mask = new Jimp(size, size, 0x00000000);
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            const distance = Math.sqrt(Math.pow(x - size/2, 2) + Math.pow(y - size/2, 2));
-            if (distance <= size/2) {
-                mask.setPixelColor(0xFFFFFFFF, x, y);
-            }
-        }
-    }
+    try {
+        // Reuse mask for same size (improves performance)
+        const maskKey = `circle-mask-${size}`;
+        let mask = maskCache.get(maskKey);
 
-    // Process image with Jimp
-    const image = await Jimp.read(buffer);
-    return image
-        .resize(size, size)
-        .mask(mask)
-        .getBufferAsync(Jimp.MIME_PNG);
+        if (!mask) {
+            mask = new Jimp(size, size, 0x00000000);
+            // Create anti-aliased circle
+            const radius = size / 2;
+            const center = radius;
+            
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const distance = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
+                    const alpha = Math.round(Math.max(0, 255 - (Math.max(0, distance - radius + 0.5) * 255)));
+                    mask.setPixelColor(Jimp.rgbaToInt(255, 255, 255, alpha), x, y);
+                }
+            }
+            maskCache.set(maskKey, mask);
+        }
+
+        const image = await Jimp.read(buffer);
+        return image
+            .cover(size, size) // Maintain aspect ratio
+            .mask(mask.clone()) // Clone cached mask
+            .getBufferAsync(Jimp.MIME_PNG);
+
+    } catch (error) {
+        console.error('Circle crop failed:', {
+            inputSize: buffer?.length,
+            outputSize: size,
+            error: error.message
+        });
+        throw new Error(`Avatar processing failed: ${error.message}`);
+    }
 }
 
+// Mask cache for circle cropping
+const maskCache = new Map();
+
 /**
- * Load and register a font
+ * Enhanced font loader with cache
  * @param {string} path
  * @param {object} options
  */
-function loadFont(path, options) {
-    registerFont(path, options);
+function loadFont(fontPath, options) {
+    try {
+        const resolvedPath = path.resolve(fontPath);
+        if (!fs.existsSync(resolvedPath)) {
+            throw new Error(`Font file not found: ${resolvedPath}`);
+        }
+
+        const cacheKey = `${resolvedPath}-${options.family}-${options.weight || 'normal'}-${options.style || 'normal'}`;
+        if (!fontCache.has(cacheKey)) {
+            registerFont(resolvedPath, options);
+            fontCache.set(cacheKey, true);
+        }
+    } catch (error) {
+        console.error('Font loading error:', {
+            path: fontPath,
+            error: error.message
+        });
+        throw error;
+    }
 }
 
 /**
- * Register multiple fonts
+ * Batch register fonts with validation
  * @param {Array<{path: string, family: string, weight?: string, style?: string}>} fonts
  */
 function registerFonts(fonts) {
+    if (!Array.isArray(fonts)) {
+        throw new Error('Fonts must be an array');
+    }
+
     fonts.forEach(font => {
-        registerFont(font.path, {
-            family: font.family,
-            weight: font.weight,
-            style: font.style
-        });
+        try {
+            loadFont(font.path, {
+                family: font.family,
+                weight: font.weight,
+                style: font.style
+            });
+        } catch (error) {
+            console.error(`Failed to register font ${font.family}:`, error);
+        }
     });
 }
 
 /**
- * Wrap text within a width
+ * Improved text wrapping with hyphenation support
  * @param {CanvasRenderingContext2D} ctx
  * @param {string} text
  * @param {number} maxWidth
  * @returns {string}
  */
 function wrapText(ctx, text, maxWidth) {
+    if (!text || typeof text !== 'string') return '';
+    
     const words = text.split(' ');
     const lines = [];
     let currentLine = words[0];
 
     for (let i = 1; i < words.length; i++) {
         const word = words[i];
-        const width = ctx.measureText(currentLine + ' ' + word).width;
-        if (width < maxWidth) {
-            currentLine += ' ' + word;
+        const testLine = currentLine + ' ' + word;
+        const metrics = ctx.measureText(testLine);
+        
+        if (metrics.width < maxWidth) {
+            currentLine = testLine;
         } else {
-            lines.push(currentLine);
-            currentLine = word;
+            // Attempt hyphenation if word is too long
+            if (ctx.measureText(word).width > maxWidth) {
+                const hyphenated = hyphenateWord(ctx, word, maxWidth);
+                lines.push(currentLine);
+                currentLine = hyphenated;
+            } else {
+                lines.push(currentLine);
+                currentLine = word;
+            }
         }
     }
     lines.push(currentLine);
     return lines.join('\n');
+}
+
+/**
+ * Hyphenate long words that exceed maxWidth
+ */
+function hyphenateWord(ctx, word, maxWidth) {
+    for (let i = word.length - 1; i > 0; i--) {
+        const part = word.substring(0, i) + '-';
+        if (ctx.measureText(part).width <= maxWidth) {
+            return part;
+        }
+    }
+    return word; // Return as-is if can't hyphenate
 }
 
 module.exports = {
@@ -103,5 +202,10 @@ module.exports = {
     registerFonts,
     wrapText,
     createCanvas,
-    loadImage
+    loadImage,
+    // Export cache for testing/management
+    _caches: {
+        fontCache,
+        maskCache
+    }
 };

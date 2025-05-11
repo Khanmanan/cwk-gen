@@ -1,66 +1,106 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const GIFEncoder = require('gifencoder');
-const { loadImageBuffer } = require('../utils');
+const { loadImageBuffer, cropToCircle, wrapText } = require('../utils');
 const fs = require('fs');
-const { cropToCircle, wrapText } = require('../utils');
+const path = require('path');
+const Jimp = require('jimp');
+
 async function generateAnimatedWelcome(options) {
   const {
-    frames = 15,         // Number of animation frames
-    frameDelay = 100,    // ms between frames
-    quality = 10         // 1-30 (lower = better)
+    frames = 15,
+    frameDelay = 100,
+    quality = 10,
+    width = 1200,
+    height = 400,
+    avatarSize = 200
   } = options;
 
-  // Setup GIF encoder
-  const encoder = new GIFEncoder(options.width, options.height);
-  encoder.createReadStream().pipe(fs.createWriteStream('./temp.gif'));
-  encoder.start();
-  encoder.setRepeat(0);    // 0 = loop forever
-  encoder.setDelay(frameDelay);
-  encoder.setQuality(quality);
+  // Create temp file path
+  const tempPath = path.join(__dirname, `../../temp/welcome_${Date.now()}.gif`);
+  
+  try {
+    // Setup GIF encoder with proper stream handling
+    const encoder = new GIFEncoder(width, height);
+    const stream = encoder.createReadStream().pipe(fs.createWriteStream(tempPath));
+    encoder.start();
+    encoder.setRepeat(0);
+    encoder.setDelay(frameDelay);
+    encoder.setQuality(quality);
 
-  // Load assets
-  const [bgFrames, avatar] = await Promise.all([
-    loadGifFrames(options.background), // Implement this function
-    loadImageBuffer(options.avatarURL).then(b => cropToCircle(b, options.avatarSize))
-  ]);
+    // Load avatar with proper Jimp handling
+    const avatarBuffer = await loadImageBuffer(options.avatarURL);
+    const circularAvatar = await cropToCircle(avatarBuffer, avatarSize);
+    const avatarImage = await loadImage(circularAvatar);
 
-  // Render each frame
-  for (let i = 0; i < frames; i++) {
-    const canvas = createCanvas(options.width, options.height);
-    const ctx = canvas.getContext('2d');
+    // Load background frames
+    const bgFrames = await loadGifFrames(options.background);
+
+    // Render frames
+    for (let i = 0; i < frames; i++) {
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+
+      // Background frame
+      const bgFrame = await loadImage(bgFrames[i % bgFrames.length]);
+      ctx.drawImage(bgFrame, 0, 0, width, height);
+
+      // Dark overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, width, height);
+
+      // Avatar
+      const avatarX = (width - avatarSize) / 2;
+      ctx.drawImage(avatarImage, avatarX, 50, avatarSize, avatarSize);
+
+      // Text rendering
+      ctx.font = `bold 42px ${options.font || 'Arial'}`;
+      ctx.fillStyle = options.textColor || '#FFFFFF';
+      ctx.textAlign = 'center';
+      
+      // Title
+      ctx.fillText(options.title || 'WELCOME', width / 2, height - 120);
+      
+      // Username
+      ctx.font = `bold 36px ${options.font || 'Arial'}`;
+      ctx.fillText(options.username, width / 2, height - 70);
+
+      // Add frame
+      encoder.addFrame(ctx);
+    }
+
+    encoder.finish();
     
-    // Animated background
-    ctx.drawImage(
-      await loadImage(bgFrames[i % bgFrames.length]),
-      0, 0, options.width, options.height
-    );
-
-    // Static elements (avatar, text)
-    ctx.fillStyle = `rgba(0, 0, 0, 0.5)`;
-    ctx.fillRect(0, 0, options.width, options.height);
+    // Wait for stream to finish
+    await new Promise((resolve) => stream.on('finish', resolve));
     
-    // Draw avatar
-    const avatarImg = await loadImage(avatar);
-    const avatarX = (options.width - options.avatarSize) / 2;
-    ctx.drawImage(avatarImg, avatarX, 50, options.avatarSize, options.avatarSize);
+    // Read and cleanup
+    const buffer = fs.readFileSync(tempPath);
+    fs.unlinkSync(tempPath);
+    
+    return buffer;
 
-    // Add frame to GIF
-    encoder.addFrame(ctx);
+  } catch (error) {
+    // Cleanup temp file if exists
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    throw error;
   }
-
-  encoder.finish();
-  return fs.readFileSync('./temp.gif');
 }
 
-// Helper to extract GIF frames
+// Improved GIF frame loader
 async function loadGifFrames(source) {
-  if (typeof source === 'string') {
-    return require('gif-frames')({ 
-      url: source, 
-      frames: 'all' 
-    }).then(frames => frames.map(f => f.getImage()));
+  try {
+    if (typeof source === 'string') {
+      if (source.endsWith('.gif')) {
+        const gif = await Jimp.read(source);
+        return [gif.bitmap]; // Returns first frame for static fallback
+      }
+      return [await loadImageBuffer(source)];
+    }
+    return [await Jimp.read(source)];
+  } catch (error) {
+    console.error('Error loading frames:', error);
+    throw new Error('Failed to load background image');
   }
-  return [await loadImageBuffer(source)];
 }
 
 module.exports = { generateAnimatedWelcome };
