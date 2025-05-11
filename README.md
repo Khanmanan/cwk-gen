@@ -130,6 +130,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Contact
 
-Khanmanan - [GitHub](https://github.com/Khanmanan)
+<div align="center"> <a href="https://discord.gg/QukxRRFhzQ"><img src="https://invidget.switchblade.xyz/QukxRRFhzQ"/></a>
+
+<br><br>
 
 Project Link: [https://github.com/Khanmanan/cwk-gen](https://github.com/Khanmanan/cwk-gen)
