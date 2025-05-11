@@ -1,6 +1,6 @@
 {
   "name": "cwk-gen",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "High-quality image generator for Discord bots with welcome images, rank cards, profile cards, and server banners",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -18,7 +18,6 @@
     "discord",
     "image",
     "generator",
-    "canvas",
     "welcome",
     "rank",
     "profile",
@@ -48,7 +47,6 @@
   "dependencies": {
     "@napi-rs/canvas": "^0.1.70",
     "axios": "^1.6.2",
-    
     "jimp": "^0.22.7"
   },
   "devDependencies": {
@@ -56,9 +54,7 @@
     "eslint": "^8.56.0",
     "prettier": "^3.2.4",
     "typescript": "^5.0.0"
-  },
-  "peerDependencies": {
-    "canvas": "^2.11.2",
-    "sharp": "^0.32.1"
   }
 }
+  
+
