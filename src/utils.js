@@ -2,7 +2,7 @@ const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
 const Jimp = require('jimp');
 const axios = require('axios');
 const path = require('path');
-
+const createtempFile = require('tmp')
 // Cache for loaded fonts
 const fontCache = new Map();
 
@@ -193,6 +193,19 @@ function hyphenateWord(ctx, word, maxWidth) {
         }
     }
     return word; // Return as-is if can't hyphenate
+}
+function ensureTempDir() {
+    const tempDir = path.join(os.tmpdir(), 'cwk-gen');
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+    }
+    return tempDir;
+}
+
+// Safe temp file creation
+function createTempFile(extension = '') {
+    const tempDir = ensureTempDir();
+    return path.join(tempDir, `temp_${Date.now()}${extension}`);
 }
 
 module.exports = {
