@@ -113,7 +113,16 @@ generateRankCard({
     progressColor: "#FF9900"
 });
 ```
+## Exmaples 
+ Example bot
 
+[here is the example bot](https://github.com/Khanmanan/cwk-gen-bot.git)
+
+ Images example
+ 
+[Click here to view the example images](assets/examples)
+
+ Make sure to star 🌟 the repo also join our server for project and development ❤️. 
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
