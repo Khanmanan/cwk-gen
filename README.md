@@ -120,7 +120,7 @@ generateRankCard({
 
  Images example
  
-[Click here to view the example images](assets/examples)
+[Click here to view the example images](assets/example)
 
  Make sure to star 🌟 the repo also join our server for project and development ❤️. 
 ## Contributing
