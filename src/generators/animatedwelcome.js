@@ -5,10 +5,6 @@ const path = require('path');
 const sharp = require('sharp');
 const { Readable } = require('stream');
 
-// Register font
-registerFont(path.join(__dirname, '../../assets/fonts/SpaceMono-Regular.ttf'), {
-  family: 'Space Mono'
-});
 
 async function fetchImageBuffer(url) {
   const res = await fetch(url);
@@ -95,10 +91,10 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
 
       // Draw texts
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 32px "Space Mono"';
+      ctx.font = 'bold 32px "Arial"';
       ctx.fillText(user.username, 200, 100);
 
-      ctx.font = '20px "Space Mono"';
+      ctx.font = '20px "Arial"';
       const lines = wrapText(ctx, welcomeMsg, width - 220);
       lines.forEach((line, index) => {
         ctx.fillText(line, 200, 150 + index * 24);
