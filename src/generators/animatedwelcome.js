@@ -3,8 +3,9 @@ const GIFEncoder = require('gif-encoder-2');
 const fetch = require('node-fetch');
 const path = require('path');
 const sharp = require('sharp');
-const { Readable } = require('stream');
 
+// Optional: Use a custom font if needed
+// registerFont(path.join(__dirname, 'fonts', 'YourFont.ttf'), { family: 'YourFont' });
 
 async function fetchImageBuffer(url) {
   const res = await fetch(url);
@@ -39,7 +40,7 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
 
   encoder.start();
   encoder.setRepeat(0);
-  encoder.setDelay(100);
+  encoder.setDelay(80);
   encoder.setQuality(10);
 
   try {
@@ -50,7 +51,7 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
 
     const [avatarBuffer, backgroundBuffer] = await Promise.all([
       fetchImageBuffer(avatarURL),
-      fetchImageBuffer(backgroundURL || 'https://media.tenor.com/nG8mRUjHvhoAAAAC/galaxy.gif'),
+      fetchImageBuffer(backgroundURL || 'https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGpvcXFuZDA0ZHJzbzhhbXc2djI5a2drMXByZnY5YWMzNWQ0MzR5OCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/1jRItUChOutcU0MDsc/giphy.gif'),
     ]);
 
     const gifData = await sharp(backgroundBuffer, { animated: true })
@@ -62,9 +63,13 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
     const frameHeight = gifData.info.pageHeight || frameH / pages;
     const frameSize = frameW * frameHeight * channels;
 
+    if (!gifData.data || gifData.data.length < frameSize) {
+      throw new Error('GIF buffer too small or corrupted.');
+    }
+
     const avatarImage = await loadImage(avatarBuffer);
 
-    for (let i = 0; i < Math.min(60, pages); i++) {
+    for (let i = 0; i < Math.min(pages, 60); i++) {
       const start = i * frameSize;
       const end = start + frameSize;
       const frameBuffer = gifData.data.slice(start, end);
@@ -91,10 +96,10 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
 
       // Draw texts
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 32px "Arial"';
+      ctx.font = 'bold 32px Arial';
       ctx.fillText(user.username, 200, 100);
 
-      ctx.font = '20px "Arial"';
+      ctx.font = '20px Arial';
       const lines = wrapText(ctx, welcomeMsg, width - 220);
       lines.forEach((line, index) => {
         ctx.fillText(line, 200, 150 + index * 24);
@@ -104,7 +109,13 @@ async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundU
     }
 
     encoder.finish();
-    return encoder.out.getData();
+    const buffer = encoder.out.getData();
+
+    if (!buffer || buffer.length < 100) {
+      throw new Error('Generated welcome GIF is too small or empty.');
+    }
+
+    return buffer;
   } catch (err) {
     console.error('Error generating animated welcome:', err);
     throw new Error('Failed to generate animated welcome image.');
