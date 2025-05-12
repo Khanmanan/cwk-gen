@@ -1,160 +1,118 @@
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const GIFEncoder = require('gifencoder');
-const { loadImageBuffer, cropToCircle } = require('../utils');
-const fs = require('fs');
+const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
+const GIFEncoder = require('gif-encoder-2');
+const fetch = require('node-fetch');
 const path = require('path');
-const os = require('os');
-const Jimp = require('jimp');
+const sharp = require('sharp');
+const { Readable } = require('stream');
 
-// Create a safe temp directory
-const TEMP_DIR = path.join(os.tmpdir(), 'cwk-gen');
-if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true });
+// Register font
+registerFont(path.join(__dirname, '../../assets/fonts/SpaceMono-Regular.ttf'), {
+  family: 'Space Mono'
+});
+
+async function fetchImageBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
+  return await res.buffer();
 }
 
-async function generateAnimatedWelcome(options) {
-    const {
-        frames = 15,
-        frameDelay = 100,
-        quality = 10,
-        width = 1200,
-        height = 400,
-        avatarSize = 200,
-        font = 'Arial',
-        textColor = '#FFFFFF'
-    } = options;
-
-    // Create unique temp file path
-    const tempPath = path.join(TEMP_DIR, `welcome_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.gif`);
-    let tempFileCreated = false;
-
-    try {
-        // Initialize GIF encoder
-        const encoder = new GIFEncoder(width, height);
-        const outputStream = fs.createWriteStream(tempPath);
-        tempFileCreated = true;
-
-        encoder.createReadStream().pipe(outputStream);
-        encoder.start();
-        encoder.setRepeat(0);
-        encoder.setDelay(frameDelay);
-        encoder.setQuality(quality);
-
-        // Load assets in parallel
-        const [avatarImage, bgFrames] = await Promise.all([
-            loadImageBuffer(options.avatarURL)
-                .then(buf => cropToCircle(buf, avatarSize))
-                .then(buf => loadImage(buf)),
-            loadGifFrames(options.background)
-        ]);
-
-        // Render frames
-        for (let i = 0; i < frames; i++) {
-            const canvas = createCanvas(width, height);
-            const ctx = canvas.getContext('2d');
-
-            // Background frame
-            const bgFrame = await loadImage(bgFrames[i % bgFrames.length]);
-            ctx.drawImage(bgFrame, 0, 0, width, height);
-
-            // Dark overlay for readability
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(0, 0, width, height);
-
-            // Avatar (centered)
-            const avatarX = (width - avatarSize) / 2;
-            ctx.drawImage(avatarImage, avatarX, 50, avatarSize, avatarSize);
-
-            // Text rendering with shadow
-            ctx.font = `bold 42px ${font}`;
-            ctx.fillStyle = textColor;
-            ctx.textAlign = 'center';
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-            ctx.shadowBlur = 8;
-            
-            // Title
-            ctx.fillText(options.title || 'WELCOME', width / 2, height - 120);
-            
-            // Username
-            ctx.font = `bold 36px ${font}`;
-            ctx.fillText(options.username, width / 2, height - 70);
-
-            encoder.addFrame(ctx);
-        }
-
-        // Finalize GIF
-        encoder.finish();
-        
-        // Wait for file to finish writing
-        await new Promise((resolve, reject) => {
-            outputStream.on('finish', resolve);
-            outputStream.on('error', reject);
-        });
-
-        // Verify file was created
-        if (!fs.existsSync(tempPath)) {
-            throw new Error('GIF file was not created');
-        }
-
-        // Read and return buffer
-        return fs.readFileSync(tempPath);
-
-    } catch (error) {
-        console.error('Error generating welcome GIF:', {
-            error: error.message,
-            tempPath,
-            options: {
-                width,
-                height,
-                frames
-            }
-        });
-        throw error;
-    } finally {
-        // Cleanup temp file
-        if (tempFileCreated && fs.existsSync(tempPath)) {
-            try {
-                fs.unlinkSync(tempPath);
-            } catch (cleanupError) {
-                console.error('Failed to cleanup temp file:', cleanupError.message);
-            }
-        }
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (let word of words) {
+    const testLine = line + word + ' ';
+    const { width } = ctx.measureText(testLine);
+    if (width > maxWidth && line.length > 0) {
+      lines.push(line.trim());
+      line = word + ' ';
+    } else {
+      line = testLine;
     }
+  }
+  lines.push(line.trim());
+  return lines;
 }
 
-async function loadGifFrames(source) {
-    try {
-        if (!source) throw new Error('No background source provided');
-        
-        if (typeof source === 'string') {
-            // Handle local files
-            if (!fs.existsSync(source)) {
-                throw new Error(`File not found: ${source}`);
-            }
+async function generateAnimatedWelcome(user, guild, messageTemplate, backgroundURL) {
+  const width = 700;
+  const height = 250;
+  const encoder = new GIFEncoder(width, height);
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
 
-            // Handle GIFs
-            if (source.endsWith('.gif')) {
-                const gif = await Jimp.read(source);
-                return [gif.bitmap];
-            }
+  encoder.start();
+  encoder.setRepeat(0);
+  encoder.setDelay(100);
+  encoder.setQuality(10);
 
-            // Handle static images
-            return [await loadImageBuffer(source)];
-        }
+  try {
+    const avatarURL = user.displayAvatarURL({ extension: 'png', size: 512 });
+    const welcomeMsg = messageTemplate
+      .replace('{user}', user.username)
+      .replace('{server}', guild.name);
 
-        // Handle Buffer input
-        if (Buffer.isBuffer(source)) {
-            return [await Jimp.read(source)];
-        }
+    const [avatarBuffer, backgroundBuffer] = await Promise.all([
+      fetchImageBuffer(avatarURL),
+      fetchImageBuffer(backgroundURL || 'https://media.tenor.com/nG8mRUjHvhoAAAAC/galaxy.gif'),
+    ]);
 
-        throw new Error('Invalid background source type');
-    } catch (error) {
-        console.error('Error loading background frames:', error.message);
-        throw new Error(`Background loading failed: ${error.message}`);
+    const gifData = await sharp(backgroundBuffer, { animated: true })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const { pages, width: frameW, height: frameH, channels } = gifData.info;
+    const frameHeight = gifData.info.pageHeight || frameH / pages;
+    const frameSize = frameW * frameHeight * channels;
+
+    const avatarImage = await loadImage(avatarBuffer);
+
+    for (let i = 0; i < Math.min(60, pages); i++) {
+      const start = i * frameSize;
+      const end = start + frameSize;
+      const frameBuffer = gifData.data.slice(start, end);
+
+      const resizedFrame = await sharp(frameBuffer, {
+        raw: { width: frameW, height: frameHeight, channels },
+      })
+        .resize(width, height)
+        .png()
+        .toBuffer();
+
+      const frameImage = await loadImage(resizedFrame);
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(frameImage, 0, 0, width, height);
+
+      // Draw circular avatar
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(100, height / 2, 50, 0, Math.PI * 2, true);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(avatarImage, 50, height / 2 - 50, 100, 100);
+      ctx.restore();
+
+      // Draw texts
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 32px "Space Mono"';
+      ctx.fillText(user.username, 200, 100);
+
+      ctx.font = '20px "Space Mono"';
+      const lines = wrapText(ctx, welcomeMsg, width - 220);
+      lines.forEach((line, index) => {
+        ctx.fillText(line, 200, 150 + index * 24);
+      });
+
+      encoder.addFrame(ctx);
     }
+
+    encoder.finish();
+    return encoder.out.getData();
+  } catch (err) {
+    console.error('Error generating animated welcome:', err);
+    throw new Error('Failed to generate animated welcome image.');
+  }
 }
 
-module.exports = { 
-    generateAnimatedWelcome,
-    _tempDir: TEMP_DIR // Expose for testing/cleanup
-};
+module.exports = { generateAnimatedWelcome };
