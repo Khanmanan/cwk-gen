@@ -1,10 +1,14 @@
+const fs = require('fs'); // Added fs for fs.existsSync
 const { createCanvas, loadImage, registerFont } = require('@napi-rs/canvas');
 const Jimp = require('jimp');
 const axios = require('axios');
 const path = require('path');
-const createtempFile = require('tmp')
+const createtempFile = require('tmp'); // This was in the restored version
+
 // Cache for loaded fonts
 const fontCache = new Map();
+// Set to track registered font families by their family name
+const _registeredFontFamilies = new Set();
 
 /**
  * Load an image from URL or Buffer with enhanced error handling
@@ -110,9 +114,16 @@ function loadFont(fontPath, options) {
         }
 
         const cacheKey = `${resolvedPath}-${options.family}-${options.weight || 'normal'}-${options.style || 'normal'}`;
+        // Ensure options.family is a string for Set compatibility and consistency
+        if (!options || typeof options.family !== 'string' || options.family.trim() === '') {
+            throw new Error('Font family must be provided in options as a non-empty string.');
+        }
+
+        const cacheKey = `${resolvedPath}-${options.family}-${options.weight || 'normal'}-${options.style || 'normal'}`;
         if (!fontCache.has(cacheKey)) {
             registerFont(resolvedPath, options);
             fontCache.set(cacheKey, true);
+            _registeredFontFamilies.add(options.family); // Add family name to the Set
         }
     } catch (error) {
         console.error('Font loading error:', {
@@ -219,6 +230,7 @@ module.exports = {
     // Export cache for testing/management
     _caches: {
         fontCache,
-        maskCache
+        maskCache,
+        _registeredFontFamilies // Added for this subtask
     }
 };
