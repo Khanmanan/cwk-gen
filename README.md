@@ -22,9 +22,6 @@ A high-quality image generator for Discord bots that creates welcome images, ran
 ```bash
 npm install cwk-gen
 ```
-
-Note: `canvas` and `sharp` are peer dependencies that need to be installed separately.
-
 ## Quick Start
 
 ```javascript
