@@ -1,5 +1,5 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { loadImageBuffer, cropToCircle, wrapText, applyTextShadow, _caches } = require('../utils'); // Added _caches
+const { loadImageBuffer, cropToCircle, wrapText, applyTextShadow, _caches } = require('../utils');
 
 /**
  * Generate a profile card for Discord
@@ -8,7 +8,7 @@ const { loadImageBuffer, cropToCircle, wrapText, applyTextShadow, _caches } = re
  * @param {string} options.avatarURL - URL to user's avatar
  * @param {string} [options.bio=""] - User's bio
  * @param {Array<{name: string, value: string}>} [options.stats=[]] - User stats
- * @param {Array<{name: string, icon: string}>} [options.badges=[]] - User badges
+ * @param {Array<{name: string, icon: string}>} [options.badges=[]] - User badges (icon is URL/path)
  * @param {string|Buffer} [options.background] - Background image URL or Buffer
  * @param {string} [options.color="#7289DA"] - Primary color
  * @param {string} [options.textColor="#FFFFFF"] - Text color
@@ -101,45 +101,28 @@ async function generateProfileCard(options) {
         }
 
         // Apply shadow for username
-        if (typeof applyTextShadow === 'function') {
-            applyTextShadow(ctx, { enabled: shadow });
-        } else {
-            console.warn("applyTextShadow function not available. Shadow might not be applied for username.");
-            if (shadow) { // Manual fallback
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                ctx.shadowBlur = 5;
-                ctx.shadowOffsetX = 2;
-                ctx.shadowOffsetY = 2;
-            }
-        }
+        applyTextShadow(ctx, { enabled: shadow });
         
         // Draw username
         ctx.font = `bold 30px ${font}`;
         ctx.fillStyle = textColor;
-        ctx.fillText(username, 30 + avatarSize + 20, 60);
+        ctx.fillText(username, 30 + avatarSize + 20, 60); // Username Y position is 60
         
         // Disable shadow for bio text
-        if (typeof applyTextShadow === 'function') {
-            applyTextShadow(ctx, { enabled: false });
-        } else {
-             // Manual fallback
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-        }
+        applyTextShadow(ctx, { enabled: false });
 
         // Draw bio
-        if (bio) {
+        const bioY = 100; // Starting Y for bio content
+        let bioLineHeight = 25;
+        let bioLines = [];
+        if (bio && bio.trim() !== "") {
             ctx.font = `18px ${font}`;
             ctx.fillStyle = textColor; 
             const wrappedBio = wrapText(ctx, bio, width - (30 + avatarSize + 20) - 30);
-            const lines = wrappedBio.split('\n');
-            const lineHeight = 25; 
-            const bioY = 100; 
+            bioLines = wrappedBio.split('\n');
             
-            lines.forEach((line, i) => {
-                ctx.fillText(line, 30 + avatarSize + 20, bioY + i * lineHeight);
+            bioLines.forEach((line, i) => {
+                ctx.fillText(line, 30 + avatarSize + 20, bioY + i * bioLineHeight);
             });
         }
 
@@ -153,18 +136,7 @@ async function generateProfileCard(options) {
             ctx.roundRect(30, statBoxY, statBoxWidth, statBoxHeight, 10); 
             ctx.fill();
             
-            // Apply shadow for stats text
-            if (typeof applyTextShadow === 'function') {
-                applyTextShadow(ctx, { enabled: shadow });
-            } else {
-                console.warn("applyTextShadow function not available. Shadow might not be applied for stats.");
-                 if (shadow) { // Manual fallback
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-                    ctx.shadowBlur = 5;
-                    ctx.shadowOffsetX = 2;
-                    ctx.shadowOffsetY = 2;
-                }
-            }
+            applyTextShadow(ctx, { enabled: shadow });
 
             const statItemWidth = statBoxWidth / stats.length;
             stats.forEach((stat, i) => {
@@ -180,38 +152,61 @@ async function generateProfileCard(options) {
                 ctx.fillText(stat.value, statX + (statItemWidth - valueWidth) / 2, statBoxY + 60);
             });
             
-            if (typeof applyTextShadow === 'function') {
-                applyTextShadow(ctx, { enabled: false });
-            } else {
-                // Manual fallback
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 0;
-            }
+            applyTextShadow(ctx, { enabled: false });
         }
 
         // Draw badges
-        if (badges.length > 0) {
-            const badgeSize = 40;
-            const badgeSpacing = 10;
-            const badgesPerRow = 5; 
-            const badgeStartX = 30 + avatarSize + 20; 
-            let badgeStartY = 150; 
-            if (!bio) badgeStartY = 100; 
+        if (badges && badges.length > 0) {
+            applyTextShadow(ctx, { enabled: false }); // Ensure shadow is off for badges section
 
-            badges.forEach(async (badge, i) => {
+            const badgeSize = 32; 
+            const badgeSpacing = 8;
+            const badgesPerRow = 5; 
+            const badgeStartX = 30 + avatarSize + 20;
+            const badgeNameOffsetY = 10; // Space between badge icon and its name
+            const badgeRowSpacing = 15; // Extra vertical spacing between rows of badges (icon + name)
+
+            let currentBioHeight = 0;
+            if (bio && bio.trim() !== "") {
+                // bioLines and bioLineHeight are already calculated above
+                currentBioHeight = bioLines.length * bioLineHeight;
+            }
+            
+            const bioTextEndY = bioY + currentBioHeight;
+            let badgeStartYValue = bioTextEndY + (currentBioHeight > 0 ? 15 : 0); 
+            if (!bio || bio.trim() === "") { 
+                badgeStartYValue = bioY; // Start badges where bio would have started
+            }
+
+            for (let i = 0; i < badges.length; i++) {
+                const badge = badges[i];
                 const row = Math.floor(i / badgesPerRow);
                 const col = i % badgesPerRow;
                 
+                // Calculate Y position for the current badge icon
+                // Each row includes badge icon height + badge name offset + badge row spacing
+                const badgeIconY = badgeStartYValue + row * (badgeSize + badgeNameOffsetY + badgeRowSpacing);
                 const badgeX = badgeStartX + col * (badgeSize + badgeSpacing);
-                const badgeY = badgeStartY + row * (badgeSize + badgeSpacing);
 
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; 
-                ctx.beginPath();
-                ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
-                ctx.fill();
-            });
+                try {
+                    const badgeIconBuffer = await loadImageBuffer(badge.icon);
+                    const badgeImage = await loadImage(badgeIconBuffer);
+                    ctx.drawImage(badgeImage, badgeX, badgeIconY, badgeSize, badgeSize);
+                } catch (err) {
+                    console.warn(`Failed to load badge icon for '${badge.name}' from '${badge.icon}'. Drawing placeholder.`);
+                    ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
+                    ctx.fillRect(badgeX, badgeIconY, badgeSize, badgeSize);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(badgeX, badgeIconY, badgeSize, badgeSize);
+                }
+
+                // Draw badge name
+                ctx.font = `10px ${font}`; 
+                ctx.fillStyle = textColor;
+                const badgeNameWidth = ctx.measureText(badge.name).width;
+                ctx.fillText(badge.name, badgeX + (badgeSize - badgeNameWidth) / 2, badgeIconY + badgeSize + badgeNameOffsetY);
+            }
         }
 
         return canvas.toBuffer('image/png');
